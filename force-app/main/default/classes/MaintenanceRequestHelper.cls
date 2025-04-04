@@ -4,36 +4,36 @@ public with sharing class MaintenanceRequestHelper {
     public static final String TYPE_ROUTINE_MAINTENANCE = 'Routine Maintenance';
     public static final String STATUS_CLOSED = 'Closed';
     public static final String STATUS_NEW = 'New';
-    public static final String ORIGIN_WEB = 'New';
+    public static final String ORIGIN_WEB = 'Web';
 
     public static void updateWorkOrders(List<Case> lCases) {
         List<Case> lNewCases = new List<Case>();
-        Map<Id, Case> oldToNewCaseMap = new Map<Id, Case>();
+        Map<Id, Case> mOldToNewCases = new Map<Id, Case>();
     
-        Map<Id, List<Equipment_Maintenance_Item__c>> caseToEquipments = new Map<Id, List<Equipment_Maintenance_Item__c>>();
-        List<Equipment_Maintenance_Item__c> allItems = [
+        Map<Id, List<Equipment_Maintenance_Item__c>> mCaseToEquipment = new Map<Id, List<Equipment_Maintenance_Item__c>>();
+        List<Equipment_Maintenance_Item__c> lItems = [
             SELECT Equipment__c, Equipment__r.Maintenance_Cycle__c, Maintenance_Request__c
             FROM Equipment_Maintenance_Item__c
             WHERE Maintenance_Request__c IN :lCases
         ];
     
-        for (Equipment_Maintenance_Item__c item : allItems) {
-            if (!caseToEquipments.containsKey(item.Maintenance_Request__c)) {
-                caseToEquipments.put(item.Maintenance_Request__c, new List<Equipment_Maintenance_Item__c>());
+        for (Equipment_Maintenance_Item__c item: lItems) {
+            if (!mCaseToEquipment.containsKey(item.Maintenance_Request__c)) {
+                mCaseToEquipment.put(item.Maintenance_Request__c, new List<Equipment_Maintenance_Item__c>());
             }
-            caseToEquipments.get(item.Maintenance_Request__c).add(item);
+            mCaseToEquipment.get(item.Maintenance_Request__c).add(item);
         }
     
         for(Case oldCase: lCases) {
             if((oldCase.Type == TYPE_REPAIR || oldCase.Type == TYPE_ROUTINE_MAINTENANCE) && oldCase.Status == STATUS_CLOSED) {
-                Integer shortestCycle = getShortestCycleFromMap(oldCase.Id, caseToEquipments);
+                Integer shortestCycle = getShortestCycleFromMap(oldCase.Id, mCaseToEquipment);
     
                 Case newCase = new Case(
                     Type = TYPE_ROUTINE_MAINTENANCE,
-                    ParentId = oldCase.Id,
                     Status = STATUS_NEW,
                     Subject = TYPE_ROUTINE_MAINTENANCE,
                     Origin = ORIGIN_WEB,
+                    ParentId = oldCase.Id,
                     Vehicle__c = oldCase.Vehicle__c,
                     Date_Reported__c = System.today(),
                     Date_Due__c = System.today().addDays(shortestCycle)
@@ -44,28 +44,28 @@ public with sharing class MaintenanceRequestHelper {
     
         Database.insert(lNewCases);
     
-        for (Integer i = 0; i < lNewCases.size(); i++) {
-            oldToNewCaseMap.put(lCases[i].Id, lNewCases[i]);
+        for (Case newCase: lNewCases) {
+            mOldToNewCases.put(newCase.Id, newCase);
         }
     
-        List<Equipment_Maintenance_Item__c> newItems = new List<Equipment_Maintenance_Item__c>();
-        for (Equipment_Maintenance_Item__c oldItem : allItems) {
+        List<Equipment_Maintenance_Item__c> lNewItems = new List<Equipment_Maintenance_Item__c>();
+        for (Equipment_Maintenance_Item__c oldItem: lItems) {
             Id oldCaseId = oldItem.Maintenance_Request__c;
-            if (oldToNewCaseMap.containsKey(oldCaseId)) {
-                newItems.add(new Equipment_Maintenance_Item__c(
+            if (mOldToNewCases.containsKey(oldCaseId)) {
+                lNewItems.add(new Equipment_Maintenance_Item__c(
                     Equipment__c = oldItem.Equipment__c,
-                    Maintenance_Request__c = oldToNewCaseMap.get(oldCaseId).Id
+                    Maintenance_Request__c = mOldToNewCases.get(oldCaseId).Id
                 ));
             }
         }
     
-        Database.insert(newItems);
+        Database.insert(lNewItems);
     }
     
-    private static Integer getShortestCycleFromMap(Id caseId, Map<Id, List<Equipment_Maintenance_Item__c>> caseToEquipments) {
+    private static Integer getShortestCycleFromMap(Id caseId, Map<Id, List<Equipment_Maintenance_Item__c>> mCaseToEquipment) {
         Integer shortestCycle = 9999;
-        if (caseToEquipments.containsKey(caseId)) {
-            for (Equipment_Maintenance_Item__c item : caseToEquipments.get(caseId)) {
+        if (mCaseToEquipment.containsKey(caseId)) {
+            for (Equipment_Maintenance_Item__c item: mCaseToEquipment.get(caseId)) {
                 Integer cycle = (Integer) item.Equipment__r.Maintenance_Cycle__c;
                 if (cycle != null && cycle < shortestCycle) {
                     shortestCycle = cycle;
